@@ -80,8 +80,44 @@
         return;
     }
 
-    NSDictionary *npmResult = [ISHEngine execute:@"/usr/bin/npm"
-                                       arguments:@[@"install", @"--global", @"--ignore-scripts", @"--no-audit", @"--no-fund", @"@deepseek-ai/dsh@0.2.2-rc.1"]];
+    NSDictionary *npmVersionResult = [ISHEngine execute:@"/usr/bin/npm" arguments:@[@"--version"]];
+    fprintf(stdout, "\nISH_PROBE_NPM_VERSION_RESULT_BEGIN\n%s\nISH_PROBE_NPM_VERSION_RESULT_END\n", npmVersionResult.description.UTF8String);
+    fflush(stdout);
+
+    XCTAssertNil(npmVersionResult[@"launchError"], @"npm --version launch failed: %@", npmVersionResult);
+    XCTAssertFalse([npmVersionResult[@"timedOut"] boolValue], @"npm --version timed out: %@", npmVersionResult);
+    XCTAssertEqual([npmVersionResult[@"exitCode"] intValue], 0, @"npm --version failed: %@", npmVersionResult);
+    if (npmVersionResult[@"launchError"] != nil || [npmVersionResult[@"timedOut"] boolValue] || [npmVersionResult[@"exitCode"] intValue] != 0) {
+        return;
+    }
+
+    NSDictionary *npmPingResult = [ISHEngine execute:@"/usr/bin/timeout"
+                                           arguments:@[@"60", @"/usr/bin/npm", @"ping", @"--loglevel=verbose"]];
+    fprintf(stdout, "\nISH_PROBE_NPM_PING_RESULT_BEGIN\n%s\nISH_PROBE_NPM_PING_RESULT_END\n", npmPingResult.description.UTF8String);
+    fflush(stdout);
+
+    XCTAssertNil(npmPingResult[@"launchError"], @"npm ping launch failed: %@", npmPingResult);
+    XCTAssertFalse([npmPingResult[@"timedOut"] boolValue], @"npm ping timed out: %@", npmPingResult);
+    XCTAssertEqual([npmPingResult[@"exitCode"] intValue], 0, @"npm ping failed: %@", npmPingResult);
+    if (npmPingResult[@"launchError"] != nil || [npmPingResult[@"timedOut"] boolValue] || [npmPingResult[@"exitCode"] intValue] != 0) {
+        return;
+    }
+
+    NSDictionary *npmResult = [ISHEngine execute:@"/usr/bin/timeout"
+                                       arguments:@[
+                                           @"600",
+                                           @"/usr/bin/npm",
+                                           @"install",
+                                           @"--global",
+                                           @"--ignore-scripts",
+                                           @"--no-audit",
+                                           @"--no-fund",
+                                           @"--loglevel=verbose",
+                                           @"@deepseek-ai/dsh@0.2.2-rc.1",
+                                           @"debug@4.4.3",
+                                           @"ms@2.1.3",
+                                           @"zod@4.4.3"
+                                       ]];
     fprintf(stdout, "\nISH_PROBE_NPM_RESULT_BEGIN\n%s\nISH_PROBE_NPM_RESULT_END\n", npmResult.description.UTF8String);
     fflush(stdout);
 
