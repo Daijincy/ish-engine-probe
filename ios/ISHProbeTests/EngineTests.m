@@ -41,6 +41,21 @@
         return;
     }
 
+    NSDictionary *configResult = [ISHEngine execute:@"/bin/cat"
+                                          arguments:@[@"/etc/resolv.conf", @"/etc/apk/repositories"]];
+    fprintf(stdout, "\nISH_PROBE_CONFIG_RESULT_BEGIN\n%s\nISH_PROBE_CONFIG_RESULT_END\n", configResult.description.UTF8String);
+    fflush(stdout);
+
+    NSDictionary *dnsResult = [ISHEngine execute:@"/usr/bin/nslookup"
+                                       arguments:@[@"dl-cdn.alpinelinux.org"]];
+    fprintf(stdout, "\nISH_PROBE_DNS_RESULT_BEGIN\n%s\nISH_PROBE_DNS_RESULT_END\n", dnsResult.description.UTF8String);
+    fflush(stdout);
+
+    NSDictionary *httpsResult = [ISHEngine execute:@"/usr/bin/wget"
+                                        arguments:@[@"-S", @"-O", @"/dev/null", @"https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64/APKINDEX.tar.gz"]];
+    fprintf(stdout, "\nISH_PROBE_HTTPS_RESULT_BEGIN\n%s\nISH_PROBE_HTTPS_RESULT_END\n", httpsResult.description.UTF8String);
+    fflush(stdout);
+
     NSDictionary *installResult = [ISHEngine execute:@"/sbin/apk"
                                            arguments:@[@"add", @"--no-cache", @"nodejs", @"npm"]];
     fprintf(stdout, "\nISH_PROBE_APK_RESULT_BEGIN\n%s\nISH_PROBE_APK_RESULT_END\n", installResult.description.UTF8String);
