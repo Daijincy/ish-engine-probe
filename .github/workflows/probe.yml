@@ -2,7 +2,7 @@ name: iSH engine probe
 
 # Feasibility gate before touching the app: can we even build OpenMinis'
 # ish-arm64 into iOS static libraries, and produce an Alpine rootfs for it?
-# Everything here is OpenMinis' own build scripts, unmodified.
+# Builds use OpenMinis' own scripts with explicitly logged source patches.
 on:
   workflow_dispatch:
 
@@ -23,6 +23,22 @@ jobs:
           git clone --depth 1 --recurse-submodules --shallow-submodules \
             https://github.com/OpenMinis/OpenMinis.git
           cd OpenMinis && git submodule status
+
+      - name: Bound the guest uname hostname copy
+        run: |
+          # The guest utsname fields are 65 bytes, while Darwin's nodename can
+          # be longer. The unbounded copy traps in __strcpy_chk on iOS.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("OpenMinis/deps/ish/kernel/uname.c")
+          source = path.read_text()
+          old = "    strcpy(uts->hostname, hostname);"
+          new = '    snprintf(uts->hostname, sizeof(uts->hostname), "%s", hostname);'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, new))
+          PY
+          git -C OpenMinis/deps/ish diff --check
+          git -C OpenMinis/deps/ish diff -- kernel/uname.c
 
       - name: Build iSH static libraries
         run: |
