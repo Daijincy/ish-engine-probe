@@ -1,0 +1,49 @@
+name: iSH engine probe
+
+# Feasibility gate before touching the app: can we even build OpenMinis'
+# ish-arm64 into iOS static libraries, and produce an Alpine rootfs for it?
+# Everything here is OpenMinis' own build scripts, unmodified.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: brew install meson ninja llvm libarchive
+
+      - name: Fetch OpenMinis and ish-arm64
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/OpenMinis/OpenMinis.git
+          cd OpenMinis && git submodule status
+
+      - name: Build iSH static libraries
+        run: cd OpenMinis && ./deps/build_ish.sh release --all
+
+      - name: Prepare Alpine rootfs
+        run: cd OpenMinis && ./deps/prepare_alpine_rootfs.sh
+
+      - name: Inventory
+        run: |
+          ls -lh OpenMinis/deps/libs OpenMinis/deps/libs/iphonesimulator
+          du -sh OpenMinis/deps/resources/* 2>/dev/null || true
+
+      - name: Package
+        run: |
+          cd OpenMinis/deps && tar -czf "$GITHUB_WORKSPACE/ish-ios-libs.tar.gz" \
+            libs include resources
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: probe-latest
+          name: iSH iOS libraries + Alpine rootfs
+          files: ish-ios-libs.tar.gz
+          prerelease: true
