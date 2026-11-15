@@ -55,7 +55,8 @@ jobs:
             for report in "$dir"/ISHProbe*.ips; do
               [ -f "$report" ] || continue
               echo "===== $report ====="
-              plutil -p "$report" || true
+              python3 -c 'import pathlib,sys; sys.stdout.write(pathlib.Path(sys.argv[1]).read_text(errors="replace"))' "$report"
+              echo
             done
           done
           xcrun simctl spawn "$DEVICE_UDID" log show --last 3m \
