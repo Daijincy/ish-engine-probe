@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        run: brew install meson ninja llvm libarchive
+        run: brew install meson ninja llvm libarchive lld
 
       - name: Fetch OpenMinis and ish-arm64
         run: |
@@ -30,9 +30,21 @@ jobs:
           # VDSO) cannot find ld.lld. Expose just the linker, not LLVM's clang:
           # the meson cross file must keep using Xcode's clang.
           mkdir -p "$RUNNER_TEMP/lld-bin"
-          ln -sf "$(brew --prefix llvm)/bin/ld.lld" "$RUNNER_TEMP/lld-bin/ld.lld"
-          ln -sf "$(brew --prefix llvm)/bin/lld" "$RUNNER_TEMP/lld-bin/lld"
+          LLD_BIN="$(brew --prefix lld)/bin"
+          ls -l "$LLD_BIN"
+          for tool in ld.lld lld ld64.lld; do
+            [ -e "$LLD_BIN/$tool" ] && ln -sf "$LLD_BIN/$tool" "$RUNNER_TEMP/lld-bin/$tool"
+          done
           export PATH="$RUNNER_TEMP/lld-bin:$PATH"
+          command -v ld.lld && ld.lld --version
+
+          # Reproduce the exact failing invocation on a trivial input first, so
+          # a linker problem fails here in seconds instead of mid-build.
+          printf 'void f(void){}\n' > "$RUNNER_TEMP/probe.c"
+          "$(brew --prefix llvm)/bin/clang" -target aarch64-linux-gnu \
+            -fuse-ld=lld -nostdlib -shared \
+            -o "$RUNNER_TEMP/probe.so" "$RUNNER_TEMP/probe.c"
+          echo 'lld link probe OK'
           cd OpenMinis && ./deps/build_ish.sh release --all
 
       - name: Prepare Alpine rootfs
