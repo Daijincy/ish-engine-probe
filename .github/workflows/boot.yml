@@ -1,0 +1,43 @@
+name: iSH simulator boot probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boot:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download iSH libraries and Alpine rootfs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download probe-latest \
+            --pattern ish-ios-libs.tar.gz \
+            --dir "$RUNNER_TEMP" --clobber
+          mkdir -p deps
+          tar -xzf "$RUNNER_TEMP/ish-ios-libs.tar.gz" -C deps
+          ls -lh deps/libs/iphonesimulator deps/resources/alpine-rootfs
+
+      - name: Select an available iPhone simulator
+        run: |
+          DEVICE_UDID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); devices=[d for runtime in data["devices"].values() for d in runtime if d.get("isAvailable") and d["name"].startswith("iPhone")]; print(devices[0]["udid"] if devices else "")')"
+          test -n "$DEVICE_UDID"
+          echo "DEVICE_UDID=$DEVICE_UDID" >> "$GITHUB_ENV"
+          xcrun simctl list devices available | grep -F "$DEVICE_UDID"
+
+      - name: Boot Alpine and run uname in XCTest
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project ios/ISHProbe.xcodeproj \
+            -scheme ISHProbe \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE_UDID" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/ish-boot-xcodebuild.log"
