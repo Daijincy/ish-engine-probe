@@ -42,7 +42,7 @@
     }
 
     NSDictionary *installResult = [ISHEngine execute:@"/sbin/apk"
-                                           arguments:@[@"add", @"--no-cache", @"--quiet", @"nodejs", @"npm"]];
+                                           arguments:@[@"add", @"--no-cache", @"nodejs", @"npm"]];
     fprintf(stdout, "\nISH_PROBE_APK_RESULT_BEGIN\n%s\nISH_PROBE_APK_RESULT_END\n", installResult.description.UTF8String);
     fflush(stdout);
 
