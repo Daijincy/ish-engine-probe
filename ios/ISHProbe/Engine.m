@@ -122,6 +122,22 @@ static NSData *read_to_eof(int fd, dispatch_group_t readers) {
     }
     current->thread = pthread_self();
 
+    // The rootfs script writes resolv.conf after fakefsify, so the host file
+    // exists without a corresponding meta.db path. Create it through the VFS.
+    const char dnsConfig[] = "nameserver 8.8.8.8\nnameserver 8.8.4.4\n";
+    struct fd *dnsFD = generic_open("/etc/resolv.conf", O_WRONLY_ | O_CREAT_ | O_TRUNC_, 0644);
+    if (IS_ERR(dnsFD)) {
+        err = PTR_ERR(dnsFD);
+        NSLog(@"ISH_PROBE open /etc/resolv.conf = %d", err);
+        return err;
+    }
+    ssize_t dnsWritten = dnsFD->ops->write(dnsFD, dnsConfig, sizeof(dnsConfig) - 1);
+    fd_close(dnsFD);
+    if (dnsWritten != sizeof(dnsConfig) - 1) {
+        NSLog(@"ISH_PROBE write /etc/resolv.conf = %zd", dnsWritten);
+        return -EIO;
+    }
+
     create_device_nodes();
     err = do_mount(&procfs, "proc", "/proc", "", 0);
     NSLog(@"ISH_PROBE mount /proc = %d", err);
