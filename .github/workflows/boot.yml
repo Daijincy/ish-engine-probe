@@ -9,7 +9,7 @@ permissions:
 jobs:
   boot:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +31,7 @@ jobs:
           echo "DEVICE_UDID=$DEVICE_UDID" >> "$GITHUB_ENV"
           xcrun simctl list devices available | grep -F "$DEVICE_UDID"
 
-      - name: Boot Alpine and run uname and Node in XCTest
+      - name: Boot Alpine and run uname, Node, and DSH in XCTest
         run: |
           set -o pipefail
           xcodebuild test \
@@ -40,8 +40,8 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE_UDID" \
             -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 600 \
-            -maximum-test-execution-time-allowance 900 \
+            -default-test-execution-time-allowance 1200 \
+            -maximum-test-execution-time-allowance 1500 \
             CODE_SIGNING_ALLOWED=NO \
             | tee "$RUNNER_TEMP/ish-boot-xcodebuild.log"
 

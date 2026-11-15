@@ -75,7 +75,32 @@
     XCTAssertNil(nodeResult[@"launchError"], @"node launch failed: %@", nodeResult);
     XCTAssertFalse([nodeResult[@"timedOut"] boolValue], @"node timed out: %@", nodeResult);
     XCTAssertEqual([nodeResult[@"exitCode"] intValue], 0, @"node exit was not zero: %@", nodeResult);
-    XCTAssertTrue([nodeResult[@"stdout"] hasPrefix:@"v"], @"unexpected node version: %@", nodeResult);
+    XCTAssertTrue([nodeResult[@"stdout"] hasPrefix:@"v24."], @"unexpected node version: %@", nodeResult);
+    if (nodeResult[@"launchError"] != nil || [nodeResult[@"timedOut"] boolValue] || [nodeResult[@"exitCode"] intValue] != 0) {
+        return;
+    }
+
+    NSDictionary *npmResult = [ISHEngine execute:@"/usr/bin/npm"
+                                       arguments:@[@"install", @"--global", @"--ignore-scripts", @"--no-audit", @"--no-fund", @"@deepseek-ai/dsh@0.2.2-rc.1"]];
+    fprintf(stdout, "\nISH_PROBE_NPM_RESULT_BEGIN\n%s\nISH_PROBE_NPM_RESULT_END\n", npmResult.description.UTF8String);
+    fflush(stdout);
+
+    XCTAssertNil(npmResult[@"launchError"], @"npm launch failed: %@", npmResult);
+    XCTAssertFalse([npmResult[@"timedOut"] boolValue], @"npm timed out: %@", npmResult);
+    XCTAssertEqual([npmResult[@"exitCode"] intValue], 0, @"npm install failed: %@", npmResult);
+    if (npmResult[@"launchError"] != nil || [npmResult[@"timedOut"] boolValue] || [npmResult[@"exitCode"] intValue] != 0) {
+        return;
+    }
+
+    NSDictionary *dshResult = [ISHEngine execute:@"/usr/local/bin/dsh" arguments:@[@"--version"]];
+    fprintf(stdout, "\nISH_PROBE_DSH_RESULT_BEGIN\n%s\nISH_PROBE_DSH_RESULT_END\n", dshResult.description.UTF8String);
+    fflush(stdout);
+
+    XCTAssertNil(dshResult[@"launchError"], @"dsh launch failed: %@", dshResult);
+    XCTAssertFalse([dshResult[@"timedOut"] boolValue], @"dsh timed out: %@", dshResult);
+    XCTAssertEqual([dshResult[@"exitCode"] intValue], 0, @"dsh exit was not zero: %@", dshResult);
+    NSString *versionOutput = [dshResult[@"stdout"] stringByAppendingString:dshResult[@"stderr"]];
+    XCTAssertTrue([versionOutput containsString:@"0.2.2-rc.1"], @"unexpected dsh version: %@", dshResult);
 }
 
 @end

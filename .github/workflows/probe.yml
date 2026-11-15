@@ -64,7 +64,7 @@ jobs:
           cd OpenMinis && ./deps/build_ish.sh release --all
 
       - name: Prepare Alpine rootfs
-        run: cd OpenMinis && ./deps/prepare_alpine_rootfs.sh
+        run: cd OpenMinis && ./deps/prepare_alpine_rootfs.sh 3.23
 
       - name: Inventory
         run: |
