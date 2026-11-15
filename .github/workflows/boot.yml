@@ -39,5 +39,24 @@ jobs:
             -scheme ISHProbe \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE_UDID" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 180 \
             CODE_SIGNING_ALLOWED=NO \
             | tee "$RUNNER_TEMP/ish-boot-xcodebuild.log"
+
+      - name: Dump guest crash diagnostics
+        if: always()
+        run: |
+          for dir in \
+            "$HOME/Library/Logs/DiagnosticReports" \
+            "$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE_UDID/data/Library/Logs/DiagnosticReports"; do
+            [ -d "$dir" ] || continue
+            for report in "$dir"/ISHProbe*.ips; do
+              [ -f "$report" ] || continue
+              echo "===== $report ====="
+              plutil -p "$report" || true
+            done
+          done
+          xcrun simctl spawn "$DEVICE_UDID" log show --last 3m \
+            --style compact --predicate 'process == "ISHProbe"' || true
