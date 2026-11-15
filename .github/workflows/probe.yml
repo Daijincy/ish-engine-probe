@@ -25,7 +25,15 @@ jobs:
           cd OpenMinis && git submodule status
 
       - name: Build iSH static libraries
-        run: cd OpenMinis && ./deps/build_ish.sh release --all
+        run: |
+          # brew's llvm is keg-only, so `clang -fuse-ld=lld` (used for the guest
+          # VDSO) cannot find ld.lld. Expose just the linker, not LLVM's clang:
+          # the meson cross file must keep using Xcode's clang.
+          mkdir -p "$RUNNER_TEMP/lld-bin"
+          ln -sf "$(brew --prefix llvm)/bin/ld.lld" "$RUNNER_TEMP/lld-bin/ld.lld"
+          ln -sf "$(brew --prefix llvm)/bin/lld" "$RUNNER_TEMP/lld-bin/lld"
+          export PATH="$RUNNER_TEMP/lld-bin:$PATH"
+          cd OpenMinis && ./deps/build_ish.sh release --all
 
       - name: Prepare Alpine rootfs
         run: cd OpenMinis && ./deps/prepare_alpine_rootfs.sh
