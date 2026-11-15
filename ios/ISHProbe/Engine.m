@@ -242,9 +242,9 @@ static NSData *read_to_eof(int fd, dispatch_group_t readers) {
     NSData *stderrData = read_to_eof(stderrPipe[0], readers);
 
     long processWait = dispatch_semaphore_wait(
-        gExitSemaphore, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
+        gExitSemaphore, dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_SEC));
     long readerWait = dispatch_group_wait(
-        readers, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+        readers, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC));
 
     NSString *stdoutText = [[NSString alloc] initWithData:stdoutData encoding:NSUTF8StringEncoding] ?: @"";
     NSString *stderrText = [[NSString alloc] initWithData:stderrData encoding:NSUTF8StringEncoding] ?: @"";
