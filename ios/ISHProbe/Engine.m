@@ -280,6 +280,24 @@ static int boot_locked(NSString *rootPath) {
     return 0;
 }
 
+// libuv calls fstat() on stdio to decide whether it is a TTY, a pipe or a file.
+// A zeroed stat makes node treat the stream as unusable and console.log then
+// silently produces nothing, so mirror what iSH does for piped stdio.
+static void fill_stat_from_host_fd(struct fd *fd, int hostFD) {
+    struct stat hostStat;
+    if (fstat(hostFD, &hostStat) != 0) {
+        return;
+    }
+    fd->stat.mode = hostStat.st_mode;
+    fd->stat.rdev = dev_fake_from_real(hostStat.st_rdev);
+    fd->stat.inode = hostStat.st_ino;
+    fd->stat.size = hostStat.st_size;
+    if (S_ISSOCK(fd->stat.mode) || isatty(hostFD)) {
+        fd->stat.mode = S_IFCHR | 0620;
+        fd->stat.rdev = dev_make(TTY_PSEUDO_SLAVE_MAJOR, 0);
+    }
+}
+
 // Must be called on the engine thread with the kernel booted.
 static NSDictionary *run_guest_process(NSString *executable,
                                        NSArray<NSString *> *arguments,
@@ -313,6 +331,9 @@ static NSDictionary *run_guest_process(NSString *executable,
     stdinFD->real_fd = open("/dev/null", O_RDONLY);
     stdoutFD->real_fd = dup(stdoutPipe[1]);
     stderrFD->real_fd = dup(stderrPipe[1]);
+    fill_stat_from_host_fd(stdinFD, stdinFD->real_fd);
+    fill_stat_from_host_fd(stdoutFD, stdoutFD->real_fd);
+    fill_stat_from_host_fd(stderrFD, stderrFD->real_fd);
     task->files->files[0] = stdinFD;
     task->files->files[1] = stdoutFD;
     task->files->files[2] = stderrFD;
