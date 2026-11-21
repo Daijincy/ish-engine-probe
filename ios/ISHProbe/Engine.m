@@ -396,13 +396,20 @@ static NSDictionary *run_guest_process(NSString *executable,
 + (NSDictionary *)execute:(NSString *)executable
                 arguments:(NSArray<NSString *> *)arguments
               environment:(NSDictionary<NSString *, NSString *> *)environment {
+    return [self execute:executable arguments:arguments environment:environment timeout:900];
+}
+
++ (NSDictionary *)execute:(NSString *)executable
+                arguments:(NSArray<NSString *> *)arguments
+              environment:(NSDictionary<NSString *, NSString *> *)environment
+                  timeout:(NSTimeInterval)timeout {
     __block NSDictionary *result = nil;
     run_on_engine_thread_sync(^{
         if (!gBooted) {
             result = @{@"launchError": @(-1), @"error": @"kernel is not booted"};
             return;
         }
-        result = run_guest_process(executable, arguments, environment, nil, 900);
+        result = run_guest_process(executable, arguments, environment, nil, timeout);
     });
     return result;
 }

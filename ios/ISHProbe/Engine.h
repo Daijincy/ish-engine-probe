@@ -21,6 +21,13 @@ typedef void (^ISHEngineOutputBlock)(NSString *chunk, BOOL isStderr);
                 arguments:(NSArray<NSString *> *)arguments
               environment:(nullable NSDictionary<NSString *, NSString *> *)environment;
 
+/// Same as above but gives up waiting after `timeout` seconds. The guest task
+/// is not killed; the call just stops blocking, so use it for diagnostics.
++ (NSDictionary *)execute:(NSString *)executable
+                arguments:(NSArray<NSString *> *)arguments
+              environment:(nullable NSDictionary<NSString *, NSString *> *)environment
+                  timeout:(NSTimeInterval)timeout;
+
 /// Starts a long-running guest process (for example `dsh web`). Returns
 /// immediately; output and exit callbacks are delivered on an engine thread.
 /// The kernel must already be booted with bootWithRootPath:.

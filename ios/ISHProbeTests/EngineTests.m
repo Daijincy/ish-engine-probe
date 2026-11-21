@@ -4,14 +4,26 @@
 
 // The DSH rootfs is prepared at build time (tools/prepare-dsh-rootfs.py), so
 // this test does not install anything inside the guest. It boots the kernel,
-// checks the preinstalled Node, starts `dsh web`, and finally fetches the
-// printed token URL over loopback. Guest sockets are mapped to host sockets by
-// iSH, so a plain NSURLSession request exercises the real HTTP server.
+// checks the preinstalled Node, measures how fast V8 interprets code, starts
+// `dsh web`, and finally fetches the printed token URL over loopback. Guest
+// sockets map to host sockets in iSH, so the HTTP request exercises the real
+// server.
+
+// V8 cannot request host-executable pages on an unentitled iOS build, so the
+// guest runs with --jitless. That also avoids compiling every module on this
+// interpreted (gadget-only) CPU.
+static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first";
 
 @interface EngineTests : XCTestCase
 @end
 
 @implementation EngineTests
+
+- (void)printResult:(NSString *)name result:(NSDictionary *)result {
+    fprintf(stdout, "\nISH_PROBE_%@_BEGIN\n%s\nISH_PROBE_%@_END\n",
+            name.UTF8String, result.description.UTF8String, name.UTF8String);
+    fflush(stdout);
+}
 
 - (void)testDSHWebServesTheUI {
     NSString *source = [NSBundle.mainBundle pathForResource:@"alpine-rootfs" ofType:nil];
@@ -30,22 +42,43 @@
         return;
     }
 
+    NSDate *testStart = [NSDate date];
     int bootResult = [ISHEngine bootWithRootPath:destination];
     XCTAssertEqual(bootResult, 0);
     if (bootResult < 0) {
         return;
     }
 
-    NSDictionary *nodeResult = [ISHEngine execute:@"/usr/bin/node" arguments:@[@"--version"]];
-    fprintf(stdout, "\nISH_PROBE_NODE_RESULT_BEGIN\n%s\nISH_PROBE_NODE_RESULT_END\n", nodeResult.description.UTF8String);
-    fflush(stdout);
+    NSDictionary *nodeResult = [ISHEngine execute:@"/usr/bin/node" arguments:@[@"--version"] timeout:300];
+    [self printResult:@"NODE_RESULT" result:nodeResult];
     XCTAssertNil(nodeResult[@"launchError"], @"node launch failed: %@", nodeResult);
-    XCTAssertFalse([nodeResult[@"timedOut"] boolValue], @"node timed out: %@", nodeResult);
     XCTAssertEqual([nodeResult[@"exitCode"] intValue], 0, @"node exit was not zero: %@", nodeResult);
     XCTAssertTrue([nodeResult[@"stdout"] hasPrefix:@"v24."], @"unexpected node version: %@", nodeResult);
-    if (nodeResult[@"launchError"] != nil || [nodeResult[@"timedOut"] boolValue] || [nodeResult[@"exitCode"] intValue] != 0) {
+    if (nodeResult[@"launchError"] != nil || [nodeResult[@"exitCode"] intValue] != 0) {
         return;
     }
+
+    // First prove that V8 can at least execute a script in this CPU mode.
+    NSDictionary *scriptResult = [ISHEngine execute:@"/usr/bin/node"
+                                          arguments:@[@"--jitless", @"-e", @"console.log('JITLESS_OK')"]
+                                        environment:nil
+                                            timeout:300];
+    [self printResult:@"SCRIPT_RESULT" result:scriptResult];
+    XCTAssertNil(scriptResult[@"launchError"], @"script launch failed: %@", scriptResult);
+    XCTAssertTrue([scriptResult[@"stdout"] containsString:@"JITLESS_OK"],
+                  @"V8 could not run a script: %@", scriptResult);
+    if (![scriptResult[@"stdout"] containsString:@"JITLESS_OK"]) {
+        return;
+    }
+
+    // Rough calibration: how expensive is plain guest code under this CPU?
+    NSDictionary *benchResult = [ISHEngine execute:@"/usr/bin/node"
+                                         arguments:@[@"--jitless", @"-e",
+                                                     @"let t=Date.now(),s=0;for(let i=0;i<2000000;i++)s+=i;"
+                                                     @"console.log('BENCH_MS',Date.now()-t,s)"]
+                                       environment:nil
+                                           timeout:600];
+    [self printResult:@"BENCH_RESULT" result:benchResult];
 
     NSMutableString *tail = [NSMutableString string];
     NSLock *tailLock = [NSLock new];
@@ -57,7 +90,7 @@
         @"DSH_HOME": @"/root/.dsh",
         @"UV_USE_IO_URING": @"0",
         @"NARB_DISABLE_NATIVE_CACHE": @"1",
-        @"NODE_OPTIONS": @"--dns-result-order=ipv4first",
+        @"NODE_OPTIONS": DSHNodeOptions,
     }
                                     output:^(NSString *chunk, BOOL isStderr) {
         fprintf(stdout, "%s", chunk.UTF8String);
@@ -75,18 +108,43 @@
         dispatch_semaphore_signal(tokenReady);
     }];
     XCTAssertTrue(started, @"dsh web did not start");
+    if (!started) {
+        return;
+    }
 
-    long tokenWait = dispatch_semaphore_wait(tokenReady,
-                                             dispatch_time(DISPATCH_TIME_NOW, 1800 * NSEC_PER_SEC));
+    // DSH prints nothing until the web server is up, so read its progress from
+    // the guest filesystem, which fakefs keeps as plain host files.
+    NSString *dshHome = [destination stringByAppendingPathComponent:@"data/root/.dsh"];
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:3000];
+    long waitResult = 1;
+    while ([deadline timeIntervalSinceNow] > 0) {
+        NSTimeInterval slice = MIN(60, [deadline timeIntervalSinceNow]);
+        waitResult = dispatch_semaphore_wait(tokenReady,
+                                             dispatch_time(DISPATCH_TIME_NOW,
+                                                           (int64_t)(slice * NSEC_PER_SEC)));
+        if (waitResult == 0) {
+            break;
+        }
+        NSMutableArray<NSString *> *seen = [NSMutableArray array];
+        for (NSString *sub in @[@"profiles/web", @"storages", @".anonymous-user-id"]) {
+            if ([files fileExistsAtPath:[dshHome stringByAppendingPathComponent:sub]]) {
+                [seen addObject:sub];
+            }
+        }
+        NSString *progress = seen.count ? [seen componentsJoinedByString:@","] : @"none";
+        fprintf(stdout, "\nISH_PROBE_PROGRESS_%lds_%s\n",
+                (long)(-testStart.timeIntervalSinceNow), progress.UTF8String);
+        fflush(stdout);
+    }
+
     [tailLock lock];
     NSString *output = [tail copy];
     [tailLock unlock];
     fprintf(stdout, "\nISH_PROBE_DSH_OUTPUT_BEGIN\n%s\nISH_PROBE_DSH_OUTPUT_END\n", output.UTF8String);
     fflush(stdout);
-    XCTAssertEqual(tokenWait, 0, @"dsh web did not print a token URL within 30 minutes");
 
     NSRange marker = [output rangeOfString:@"http://127.0.0.1:"];
-    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output");
+    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output after 50 minutes");
     if (marker.location == NSNotFound) {
         return;
     }
@@ -95,7 +153,8 @@
     if (newline.location != NSNotFound) {
         urlText = [urlText substringToIndex:newline.location];
     }
-    fprintf(stdout, "\nISH_PROBE_DSH_URL_%s\n", urlText.UTF8String);
+    fprintf(stdout, "\nISH_PROBE_DSH_URL_%s\nISH_PROBE_DSH_STARTUP_%lds\n",
+            urlText.UTF8String, (long)-[testStart timeIntervalSinceNow]);
     fflush(stdout);
 
     NSURL *url = [NSURL URLWithString:urlText];

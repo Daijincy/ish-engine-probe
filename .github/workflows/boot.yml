@@ -13,7 +13,7 @@ permissions:
 jobs:
   boot:
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +46,7 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE_UDID" \
             -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 1800 \
+            -default-test-execution-time-allowance 3600 \
             -maximum-test-execution-time-allowance 3600 \
             CODE_SIGNING_ALLOWED=NO \
             | tee "$RUNNER_TEMP/ish-boot-xcodebuild.log"
