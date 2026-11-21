@@ -46,6 +46,26 @@ jobs:
           PY
           git -C OpenMinis/deps/ish diff --check
 
+      - name: Make fakefsify honour the process locale
+        run: |
+          # Alpine ships a CA certificate with a non-ASCII filename. libarchive
+          # converts pathnames from UTF-8 using the C library locale, but
+          # fakefsify never calls setlocale(), so LANG from the environment has
+          # no effect and the import aborts with "Pathname can't be converted".
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("OpenMinis/deps/ish/tools/fakefsify.c")
+          source = path.read_text()
+          includes = "#include <stdio.h>"
+          assert source.count(includes) == 1
+          source = source.replace(includes, "#include <locale.h>\n" + includes)
+          main = "int main(int argc, const char *argv[]) {\n"
+          assert source.count(main) == 1
+          source = source.replace(main, main + "    setlocale(LC_ALL, \"\");\n")
+          path.write_text(source)
+          PY
+          git -C OpenMinis/deps/ish diff --check
+
       - name: Build iSH libraries (device + simulator)
         run: |
           mkdir -p "$RUNNER_TEMP/lld-bin"
