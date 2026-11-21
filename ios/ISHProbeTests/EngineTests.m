@@ -114,7 +114,9 @@ static double processCPUSeconds(void) {
             syncWorks, pipeWorks, timerWorks);
     fflush(stdout);
     if (!syncWorks) {
-        // Nothing else can work if V8 itself never runs.
+        // Nothing else can work if V8 itself never runs. Fail loudly: running
+        // out the clock silently used to make this job look green.
+        XCTFail(@"V8 did not run under the interpreter: %@", syncResult);
         return;
     }
 

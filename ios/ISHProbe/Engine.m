@@ -12,6 +12,7 @@
 
 #include "ish/kernel/init.h"
 #include "ish/kernel/task.h"
+#include "ish/kernel/resource.h"
 #include "ish/kernel/calls.h"
 #include "ish/kernel/fs.h"
 #include "ish/fs/fake.h"
@@ -325,6 +326,13 @@ static NSDictionary *run_guest_process(NSString *executable,
         return @{@"launchError": @(err), @"error": @"become_new_init_child failed"};
     }
     struct task *task = current;
+
+    // glibc sizes new thread stacks from RLIMIT_STACK, and iSH's 128MB default
+    // makes each Node worker reserve a 128MB stack. iSH caps committed
+    // anonymous pages at 512MB, so the third thread's mprotect fails with
+    // ENOMEM and Node then parks every thread on a futex (0.5s CPU, no
+    // output). 8MB is the usual Linux default and leaves plenty of headroom.
+    task->group->limits[RLIMIT_STACK_] = (struct rlimit_){8 * 1024 * 1024, RLIM_INFINITY_};
 
     struct fd *stdinFD = adhoc_fd_create(&realfs_fdops);
     struct fd *stdoutFD = adhoc_fd_create(&realfs_fdops);
