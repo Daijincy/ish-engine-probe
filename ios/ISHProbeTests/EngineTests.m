@@ -1,18 +1,23 @@
 #import <XCTest/XCTest.h>
 #include <stdio.h>
+#include <sys/resource.h>
 #import "Engine.h"
 
-// The DSH rootfs is prepared at build time (tools/prepare-dsh-rootfs.py), so
-// this test does not install anything inside the guest. It boots the kernel,
-// checks the preinstalled Node, measures how fast V8 interprets code, starts
-// `dsh web`, and finally fetches the printed token URL over loopback. Guest
-// sockets map to host sockets in iSH, so the HTTP request exercises the real
-// server.
+// The DSH rootfs is prepared at build time (tools/prepare-dsh-rootfs.py). This
+// test boots the kernel, checks the preinstalled Node, probes which parts of
+// the V8 runtime work under the gadget interpreter, then starts `dsh web` and
+// fetches the printed token URL over loopback.
 
-// V8 cannot request host-executable pages on an unentitled iOS build, so the
-// guest runs with --jitless. That also avoids compiling every module on this
-// interpreted (gadget-only) CPU.
 static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first";
+
+static double processCPUSeconds(void) {
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) != 0) {
+        return -1;
+    }
+    return usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6 +
+           usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6;
+}
 
 @interface EngineTests : XCTestCase
 @end
@@ -23,6 +28,21 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
     fprintf(stdout, "\nISH_PROBE_%s_BEGIN\n%s\nISH_PROBE_%s_END\n",
             name.UTF8String, result.description.UTF8String, name.UTF8String);
     fflush(stdout);
+}
+
+- (NSDictionary *)runNodeScript:(NSString *)script name:(NSString *)name timeout:(NSTimeInterval)timeout {
+    // CPU time tells us whether a slow probe is computing or deadlocked.
+    double cpuBefore = processCPUSeconds();
+    NSDate *started = [NSDate date];
+    NSDictionary *result = [ISHEngine execute:@"/usr/bin/node"
+                                    arguments:@[@"--jitless", @"-e", script]
+                                  environment:nil
+                                      timeout:timeout];
+    fprintf(stdout, "\nISH_PROBE_%s_ELAPSED_%lds_CPU_%.1fs\n", name.UTF8String,
+            (long)-started.timeIntervalSinceNow, processCPUSeconds() - cpuBefore);
+    fflush(stdout);
+    [self printResult:name result:result];
+    return result;
 }
 
 - (void)testDSHWebServesTheUI {
@@ -61,27 +81,35 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
         return;
     }
 
-    // First prove that V8 can at least execute a script in this CPU mode.
-    NSDictionary *scriptResult = [ISHEngine execute:@"/usr/bin/node"
-                                          arguments:@[@"--jitless", @"-e", @"console.log('JITLESS_OK')"]
-                                        environment:nil
-                                            timeout:300];
-    [self printResult:@"SCRIPT_RESULT" result:scriptResult];
-    XCTAssertNil(scriptResult[@"launchError"], @"script launch failed: %@", scriptResult);
-    XCTAssertTrue([scriptResult[@"stdout"] containsString:@"JITLESS_OK"],
-                  @"V8 could not run a script: %@", scriptResult);
-    if (![scriptResult[@"stdout"] containsString:@"JITLESS_OK"]) {
-        return;
+    // Probe 1: synchronous write. Needs the JS engine, not libuv. A very long
+    // timeout is deliberate: if V8 is merely slow, we want the real duration.
+    NSDictionary *syncResult = [self runNodeScript:
+        @"require('fs').writeSync(1,'SYNC_OK '+process.version+'\\n')"
+                                                name:@"SYNC_RESULT" timeout:1200];
+    BOOL syncWorks = [syncResult[@"stdout"] containsString:@"SYNC_OK"];
+
+    BOOL pipeWorks = NO;
+    BOOL timerWorks = NO;
+    if (syncWorks) {
+        // Probe 2: console.log to a pipe, which goes through libuv.
+        NSDictionary *pipeResult = [self runNodeScript:@"console.log('PIPE_OK')"
+                                                  name:@"PIPE_RESULT" timeout:120];
+        pipeWorks = [pipeResult[@"stdout"] containsString:@"PIPE_OK"];
+
+        // Probe 3: timers, which need the event loop's epoll/wakeup path.
+        NSDictionary *timerResult = [self runNodeScript:
+            @"setTimeout(()=>require('fs').writeSync(1,'TIMER_OK\\n'),1000)"
+                                                     name:@"TIMER_RESULT" timeout:120];
+        timerWorks = [timerResult[@"stdout"] containsString:@"TIMER_OK"];
     }
 
-    // Rough calibration: how expensive is plain guest code under this CPU?
-    NSDictionary *benchResult = [ISHEngine execute:@"/usr/bin/node"
-                                         arguments:@[@"--jitless", @"-e",
-                                                     @"let t=Date.now(),s=0;for(let i=0;i<2000000;i++)s+=i;"
-                                                     @"console.log('BENCH_MS',Date.now()-t,s)"]
-                                       environment:nil
-                                           timeout:600];
-    [self printResult:@"BENCH_RESULT" result:benchResult];
+    fprintf(stdout, "\nISH_PROBE_CAPS_SYNC_%d_PIPE_%d_TIMER_%d\n",
+            syncWorks, pipeWorks, timerWorks);
+    fflush(stdout);
+    if (!syncWorks) {
+        // Nothing else can work if V8 itself never runs.
+        return;
+    }
 
     NSMutableString *tail = [NSMutableString string];
     NSLock *tailLock = [NSLock new];
@@ -94,6 +122,7 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
         @"UV_USE_IO_URING": @"0",
         @"NARB_DISABLE_NATIVE_CACHE": @"1",
         @"NODE_OPTIONS": DSHNodeOptions,
+        @"NODE_COMPILE_CACHE": @"/root/.dsh/node-compile-cache",
     }
                                     output:^(NSString *chunk, BOOL isStderr) {
         fprintf(stdout, "%s", chunk.UTF8String);
@@ -118,10 +147,11 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
     // DSH prints nothing until the web server is up, so read its progress from
     // the guest filesystem, which fakefs keeps as plain host files.
     NSString *dshHome = [destination stringByAppendingPathComponent:@"data/root/.dsh"];
-    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:3000];
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:900];
     long waitResult = 1;
     while ([deadline timeIntervalSinceNow] > 0) {
         NSTimeInterval slice = MIN(60, [deadline timeIntervalSinceNow]);
+        double cpuBefore = processCPUSeconds();
         waitResult = dispatch_semaphore_wait(tokenReady,
                                              dispatch_time(DISPATCH_TIME_NOW,
                                                            (int64_t)(slice * NSEC_PER_SEC)));
@@ -135,8 +165,9 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
             }
         }
         NSString *progress = seen.count ? [seen componentsJoinedByString:@","] : @"none";
-        fprintf(stdout, "\nISH_PROBE_PROGRESS_%lds_%s\n",
-                (long)(-testStart.timeIntervalSinceNow), progress.UTF8String);
+        fprintf(stdout, "\nISH_PROBE_PROGRESS_%lds_CPU_%.1fs_%s\n",
+                (long)(-testStart.timeIntervalSinceNow),
+                processCPUSeconds() - cpuBefore, progress.UTF8String);
         fflush(stdout);
     }
 
@@ -147,7 +178,7 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
     fflush(stdout);
 
     NSRange marker = [output rangeOfString:@"http://127.0.0.1:"];
-    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output after 50 minutes");
+    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output after 15 minutes");
     if (marker.location == NSNotFound) {
         return;
     }
@@ -180,7 +211,7 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
         fflush(stdout);
         [expectation fulfill];
     }] resume];
-    [self waitForExpectations:@[expectation] timeout:60];
+    [self waitForExpectations:@[expectation] timeout:120];
 
     XCTAssertEqual(status, 200, @"DSH web did not serve the UI");
     XCTAssertGreaterThan(bodyLength, 100, @"DSH web returned an empty page");

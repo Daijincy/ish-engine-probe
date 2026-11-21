@@ -289,6 +289,7 @@ static NSString *const DSHListenPort = @"8787";
         @"UV_USE_IO_URING": @"0",
         @"NARB_DISABLE_NATIVE_CACHE": @"1",
         @"NODE_OPTIONS": @"--jitless --dns-result-order=ipv4first",
+        @"NODE_COMPILE_CACHE": @"/root/.dsh/node-compile-cache",
     };
 
     __weak typeof(self) weakSelf = self;
