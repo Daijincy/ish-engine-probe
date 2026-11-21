@@ -16,7 +16,16 @@ extern _Atomic long anon_page_limit;
 
 // --trace-exit prints who called process.exit; dsh web exits 0 silently inside
 // iSH while the same tree stays up natively, so the caller is what we need.
-static NSString *const DSHNodeOptions = @"--dns-result-order=ipv4first --trace-exit --trace-uncaught";
+// The --import preload reports the live handles when the loop drains, which
+// distinguishes "exited on purpose" from "an await never settled".
+static NSString *const DSHNodeOptions =
+    @"--dns-result-order=ipv4first --trace-exit --trace-uncaught "
+    @"--import=data:text/javascript,"
+    @"process.on('beforeExit',()=>console.error('BEFORE_EXIT_HANDLES',"
+    @"process._getActiveHandles().map(h=>h&&h.constructor&&h.constructor.name).join('|'),"
+    @"'REQS',process._getActiveRequests().map(r=>r&&r.constructor&&r.constructor.name).join('|')));"
+    @"process.on('unhandledRejection',e=>console.error('UNHANDLED_REJECTION',e&&e.stack||e));"
+    @"process.on('exit',c=>console.error('EXIT_EVENT',c));";
 
 static double processCPUSeconds(void) {
     struct rusage usage;
