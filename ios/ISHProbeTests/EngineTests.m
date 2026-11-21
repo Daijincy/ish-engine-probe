@@ -20,7 +20,7 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
 @implementation EngineTests
 
 - (void)printResult:(NSString *)name result:(NSDictionary *)result {
-    fprintf(stdout, "\nISH_PROBE_%@_BEGIN\n%s\nISH_PROBE_%@_END\n",
+    fprintf(stdout, "\nISH_PROBE_%s_BEGIN\n%s\nISH_PROBE_%s_END\n",
             name.UTF8String, result.description.UTF8String, name.UTF8String);
     fflush(stdout);
 }
@@ -49,7 +49,10 @@ static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first
         return;
     }
 
-    NSDictionary *nodeResult = [ISHEngine execute:@"/usr/bin/node" arguments:@[@"--version"] timeout:300];
+    NSDictionary *nodeResult = [ISHEngine execute:@"/usr/bin/node"
+                                          arguments:@[@"--version"]
+                                        environment:nil
+                                            timeout:300];
     [self printResult:@"NODE_RESULT" result:nodeResult];
     XCTAssertNil(nodeResult[@"launchError"], @"node launch failed: %@", nodeResult);
     XCTAssertEqual([nodeResult[@"exitCode"] intValue], 0, @"node exit was not zero: %@", nodeResult);
