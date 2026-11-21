@@ -326,7 +326,12 @@ def main():
             shutil.rmtree(args.output)
         log("fakefsify -> " + args.output)
         import subprocess
-        subprocess.run([args.fakefsify, archive_path, args.output], check=True)
+        # libarchive refuses to convert the archive's UTF-8 pathnames when the
+        # process locale is plain C (the default on macOS runners).
+        environment = dict(os.environ)
+        environment["LANG"] = "en_US.UTF-8"
+        environment["LC_ALL"] = "en_US.UTF-8"
+        subprocess.run([args.fakefsify, archive_path, args.output], check=True, env=environment)
         verify(args.output, args.dsh_tree)
     else:
         log("skipping fakefsify (no --fakefsify given)")
