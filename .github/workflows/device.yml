@@ -144,7 +144,12 @@ jobs:
           done
           echo "--- bundled rootfs ---"
           test -f "$APP/alpine-rootfs/meta.db" || { echo "::error::meta.db missing"; exit 1; }
-          test -x "$APP/alpine-rootfs/data/usr/bin/node" || { echo "::error::node missing"; exit 1; }
+          # fakefs stores host files as 0644; the guest sees the executable bit
+          # from meta.db, so checking -x on the host copy would be wrong.
+          test -f "$APP/alpine-rootfs/data/usr/bin/node" || { echo "::error::node missing"; exit 1; }
+          test "$(stat -f%z "$APP/alpine-rootfs/data/usr/bin/node")" -gt 1000000 || {
+            echo "::error::node binary is truncated"; exit 1; }
+          ls -l "$APP/alpine-rootfs/data/usr/bin/node"
           test -f "$APP/alpine-rootfs/data/opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js" || {
             echo "::error::DSH is missing from the image"; exit 1; }
           test -f "$APP/alpine-rootfs/data/opt/dsh/node_modules/@koromix/koffi-linux-arm64/musl_arm64/koffi.node" || {
