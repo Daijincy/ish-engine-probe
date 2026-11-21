@@ -288,7 +288,7 @@ static NSString *const DSHListenPort = @"8787";
         @"DSH_HOME": @"/root/.dsh",
         @"UV_USE_IO_URING": @"0",
         @"NARB_DISABLE_NATIVE_CACHE": @"1",
-        @"NODE_OPTIONS": @"--jitless --dns-result-order=ipv4first",
+        @"NODE_OPTIONS": @"--dns-result-order=ipv4first",
         @"NODE_COMPILE_CACHE": @"/root/.dsh/node-compile-cache",
     };
 

@@ -8,7 +8,7 @@
 // the V8 runtime work under the gadget interpreter, then starts `dsh web` and
 // fetches the printed token URL over loopback.
 
-static NSString *const DSHNodeOptions = @"--jitless --dns-result-order=ipv4first";
+static NSString *const DSHNodeOptions = @"--dns-result-order=ipv4first";
 
 static double processCPUSeconds(void) {
     struct rusage usage;
@@ -32,10 +32,12 @@ static double processCPUSeconds(void) {
 
 - (NSDictionary *)runNodeScript:(NSString *)script name:(NSString *)name timeout:(NSTimeInterval)timeout {
     // CPU time tells us whether a slow probe is computing or deadlocked.
+    // Go through /bin/sh so the kernel sees a guest execve of node and applies
+    // its V8 flag set; the app reaches node the same way via the dsh wrapper.
     double cpuBefore = processCPUSeconds();
     NSDate *started = [NSDate date];
-    NSDictionary *result = [ISHEngine execute:@"/usr/bin/node"
-                                    arguments:@[@"--jitless", @"-e", script]
+    NSDictionary *result = [ISHEngine execute:@"/bin/sh"
+                                    arguments:@[@"-c", script]
                                   environment:nil
                                       timeout:timeout];
     fprintf(stdout, "\nISH_PROBE_%s_ELAPSED_%lds_CPU_%.1fs\n", name.UTF8String,
@@ -84,7 +86,7 @@ static double processCPUSeconds(void) {
     // Probe 1: synchronous write. Needs the JS engine, not libuv. A very long
     // timeout is deliberate: if V8 is merely slow, we want the real duration.
     NSDictionary *syncResult = [self runNodeScript:
-        @"require('fs').writeSync(1,'SYNC_OK '+process.version+'\\n')"
+        @"exec /usr/bin/node -e \"require('fs').writeSync(1,'SYNC_OK '+process.version+'\\n')\""
                                                 name:@"SYNC_RESULT" timeout:1200];
     BOOL syncWorks = [syncResult[@"stdout"] containsString:@"SYNC_OK"];
 
@@ -92,13 +94,13 @@ static double processCPUSeconds(void) {
     BOOL timerWorks = NO;
     if (syncWorks) {
         // Probe 2: console.log to a pipe, which goes through libuv.
-        NSDictionary *pipeResult = [self runNodeScript:@"console.log('PIPE_OK')"
+        NSDictionary *pipeResult = [self runNodeScript:@"exec /usr/bin/node -e \"console.log('PIPE_OK')\""
                                                   name:@"PIPE_RESULT" timeout:120];
         pipeWorks = [pipeResult[@"stdout"] containsString:@"PIPE_OK"];
 
         // Probe 3: timers, which need the event loop's epoll/wakeup path.
         NSDictionary *timerResult = [self runNodeScript:
-            @"setTimeout(()=>require('fs').writeSync(1,'TIMER_OK\\n'),1000)"
+            @"exec /usr/bin/node -e \"setTimeout(()=>require('fs').writeSync(1,'TIMER_OK\\n'),1000)\""
                                                      name:@"TIMER_RESULT" timeout:120];
         timerWorks = [timerResult[@"stdout"] containsString:@"TIMER_OK"];
     }

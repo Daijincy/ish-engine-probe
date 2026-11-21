@@ -213,10 +213,12 @@ static int boot_locked(NSString *rootPath) {
         return err;
     }
 
-    // The AOT runtime starts enabled. This app deliberately exercises the
-    // interpreter/gadget engine only, with no JIT or executable-memory entitlement.
-    err = jit_control("off", 3);
-    NSLog(@"ISH_ENGINE jit_control(off) = %d", err);
+    // This build is AOT-only: it translates nothing at run time and never asks
+    // for executable pages. AOT images are what make guest code fast, so make
+    // sure they are enabled (jit_control("off") would disable them, leaving the
+    // gadget interpreter for every instruction).
+    err = jit_control("on", 2);
+    NSLog(@"ISH_ENGINE jit_control(on) = %d", err);
 
     err = become_first_process();
     NSLog(@"ISH_ENGINE become_first_process = %d", err);
@@ -251,6 +253,17 @@ static int boot_locked(NSString *rootPath) {
     NSLog(@"ISH_ENGINE mount /dev/pts = %d", err);
     if (err < 0) {
         return err;
+    }
+
+    struct fd *jitfd = generic_open("/proc/ish/jit", O_RDONLY_, 0);
+    if (!IS_ERR(jitfd)) {
+        char jitbuf[2048];
+        ssize_t jitlen = jitfd->ops->read(jitfd, jitbuf, sizeof(jitbuf) - 1);
+        fd_close(jitfd);
+        if (jitlen > 0) {
+            jitbuf[jitlen] = '\0';
+            NSLog(@"ISH_ENGINE /proc/ish/jit:\n%s", jitbuf);
+        }
     }
 
     tty_drivers[TTY_CONSOLE_MAJOR] = &probe_console_driver;
