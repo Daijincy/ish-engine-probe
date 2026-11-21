@@ -117,8 +117,24 @@ static double processCPUSeconds(void) {
         timerWorks = [timerResult[@"stdout"] containsString:@"TIMER_OK"];
     }
 
-    fprintf(stdout, "\nISH_PROBE_CAPS_SYNC_%d_PIPE_%d_TIMER_%d\n",
-            syncWorks, pipeWorks, timerWorks);
+    // Probe 4: loopback listen + connect. If the guest cannot listen on
+    // 127.0.0.1, `dsh web` silently has no server socket to keep it alive.
+    NSDictionary *listenResult = [self runNodeScript:
+        @"exec /usr/bin/node -e \"const net=require('net');const s=net.createServer(c=>{c.end('HI')}).listen(8791,'127.0.0.1',()=>{const c=net.connect(8791,'127.0.0.1');c.on('connect',()=>console.log('LISTEN_CONNECT_OK'));c.on('data',d=>{console.log('LISTEN_DATA_'+d);c.destroy();s.close();});c.on('error',e=>{console.log('LISTEN_CLIENT_ERR_'+e.code);s.close();});});s.on('error',e=>console.log('LISTEN_SERVER_ERR_'+e.code));setTimeout(()=>{console.log('LISTEN_TIMEOUT');process.exit(3)},15000);\""
+                                                name:@"LISTEN_RESULT" timeout:120];
+    BOOL listenWorks = [listenResult[@"stdout"] containsString:@"LISTEN_CONNECT_OK"];
+
+    // The composed profile tree proves that bundle resolution works without
+    // actually mounting the app; empty output means the profile is broken.
+    NSDictionary *dumpResult = [self runNodeScript:@"exec /usr/local/bin/dsh --profile web --dump-config"
+                                              name:@"DSH_DUMP" timeout:300];
+    NSString *dump = dumpResult[@"stdout"] ?: @"";
+    fprintf(stdout, "\nISH_PROBE_DSH_DUMP_BEGIN\n%.*s\nISH_PROBE_DSH_DUMP_END\n",
+            (int)MIN(dump.length, (NSUInteger)2000), dump.UTF8String);
+
+    fprintf(stdout, "\nISH_PROBE_CAPS_SYNC_%d_PIPE_%d_TIMER_%d_LISTEN_%d_DUMP_%lu\n",
+            syncWorks, pipeWorks, timerWorks, listenWorks,
+            (unsigned long)[dumpResult[@"stdout"] length]);
     fflush(stdout);
     if (!syncWorks) {
         // Nothing else can work if V8 itself never runs. Fail loudly: running
