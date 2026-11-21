@@ -1,0 +1,158 @@
+{
+  "alpine": {
+    "arch": "aarch64",
+    "minirootfs": "alpine-minirootfs-3.23.0-aarch64.tar.gz",
+    "minirootfs_sha256": "5552106ac866be0c46fdff7a2991a1ed85c0464301a1ac87454c41739d5b6431",
+    "mirror_path": "v3.23",
+    "version": "3.23.0"
+  },
+  "packages": [
+    {
+      "name": "ada-libs",
+      "repo": "main",
+      "sha256": "a15395e2a63e0845bd7c45055ec34c71a9b2f5c551d4af71c213262bb64334c7",
+      "size": 232253,
+      "version": "3.3.0-r0"
+    },
+    {
+      "name": "brotli-libs",
+      "repo": "main",
+      "sha256": "bec9ee522095e9fd01113d8732119847944e3152f228034246a33e2ab82e4195",
+      "size": 424994,
+      "version": "1.2.1-r0"
+    },
+    {
+      "name": "busybox",
+      "repo": "main",
+      "sha256": "d3c919f1f142e41ba83c7dbcc392388f23f840dda6867719e660ebb9cc681254",
+      "size": 521860,
+      "version": "1.37.0-r30"
+    },
+    {
+      "name": "busybox-binsh",
+      "repo": "main",
+      "sha256": "311c832f7b05a545b8d18dbddff23b1d6d0c6085970735398064f91ed55cd575",
+      "size": 1540,
+      "version": "1.37.0-r30"
+    },
+    {
+      "name": "c-ares",
+      "repo": "main",
+      "sha256": "2af302c4a232fff2abeb56ec9f16edabdb06f0e5f8d040d6e466e91f1c473d00",
+      "size": 110972,
+      "version": "1.34.9-r0"
+    },
+    {
+      "name": "ca-certificates",
+      "repo": "main",
+      "sha256": "dff46a0de98dff0f3c865752da06ab4524ce40b67c260b4807dc7ed1b1611374",
+      "size": 130920,
+      "version": "20261020-r0"
+    },
+    {
+      "name": "icu-data-en",
+      "repo": "main",
+      "sha256": "1a072bb4a9a036a7fc239a94f9e691df059cecfbd92f2058bf4f261cc6636e00",
+      "size": 1016013,
+      "version": "76.1-r1"
+    },
+    {
+      "name": "icu-libs",
+      "repo": "main",
+      "sha256": "652915ddcaa46370bc5e0cade07b80497feddd85a4ac5631d9d0f82e1227e897",
+      "size": 1924646,
+      "version": "76.1-r1"
+    },
+    {
+      "name": "libcrypto3",
+      "repo": "main",
+      "sha256": "3b0bd7aaac36d49216f47d025f303dafb6da8d05bd258f71900d3b6156d36012",
+      "size": 2286808,
+      "version": "3.5.9-r0"
+    },
+    {
+      "name": "libgcc",
+      "repo": "main",
+      "sha256": "eaaafda78fde1c904e1741680ddea91649f051e29a343152c8a4327605704b0f",
+      "size": 66324,
+      "version": "15.2.0-r2"
+    },
+    {
+      "name": "libssl3",
+      "repo": "main",
+      "sha256": "cdb3762116994f767cd1da423fa8004bd36b2e3802e3a1343786a40f00a5030e",
+      "size": 373026,
+      "version": "3.5.9-r0"
+    },
+    {
+      "name": "libstdc++",
+      "repo": "main",
+      "sha256": "10d72e25f6fcc0f3d9fdd801c9bdaed81d6e836aa2b65b63f25d2d97f860a7d1",
+      "size": 908978,
+      "version": "15.2.0-r2"
+    },
+    {
+      "name": "musl",
+      "repo": "main",
+      "sha256": "d7043c549029c98d438e9bc94213b006e5c88540eb58d1f5b0f0d1d56dbf9c98",
+      "size": 416083,
+      "version": "1.2.5-r24"
+    },
+    {
+      "name": "nghttp2-libs",
+      "repo": "main",
+      "sha256": "2e17aa1d7d4a37b2d029210d239b8b2e4ac40748d9a8c8912a6b607011034fd1",
+      "size": 63628,
+      "version": "1.69.0-r0"
+    },
+    {
+      "name": "nodejs",
+      "repo": "main",
+      "sha256": "7beb462edf64764e636afd38b210fb94922e8a9715718cfcd500990fa4146650",
+      "size": 17946470,
+      "version": "24.22.3-r0"
+    },
+    {
+      "name": "npm",
+      "repo": "community",
+      "sha256": "41100fbab9c6c3f08940d193b7a9736657dc8ea63126b77ae85ecb30f2077bbe",
+      "size": 2312121,
+      "version": "11.11.0-r0"
+    },
+    {
+      "name": "simdjson",
+      "repo": "main",
+      "sha256": "104c57c009c5ea1bb5bad752d7bac4fe66a874cb4ebacf69f0c96c37dfae833f",
+      "size": 52042,
+      "version": "3.12.0-r0"
+    },
+    {
+      "name": "simdutf",
+      "repo": "main",
+      "sha256": "8378961d2da9cc5043ea9545d9e20fbef931a445ef1564ac78f0f79feebab91b",
+      "size": 92168,
+      "version": "7.5.0-r1"
+    },
+    {
+      "name": "sqlite-libs",
+      "repo": "main",
+      "sha256": "badbc86e4586a716f98a1da9087a694a276a002e3c9f73d4a8efd14f3a9881e2",
+      "size": 852534,
+      "version": "3.53.4-r0"
+    },
+    {
+      "name": "zlib",
+      "repo": "main",
+      "sha256": "c9bc3c75104ffba5785277b38eb83bf90ea83539e3bb26c617864fb78dcb4462",
+      "size": 55052,
+      "version": "1.4-r0"
+    },
+    {
+      "name": "zstd-libs",
+      "repo": "main",
+      "sha256": "50a998e56e4bf31504996e49c1b4a23eed5e0cd4e24b8a1356a54daf1a6eabbe",
+      "size": 363448,
+      "version": "1.5.7-r2"
+    }
+  ]
+}

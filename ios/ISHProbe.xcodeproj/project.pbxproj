@@ -13,6 +13,7 @@
 		A20000000000000000000004 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000006 /* libsqlite3.tbd */; };
 		A20000000000000000000005 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000007 /* libresolv.tbd */; };
 		A20000000000000000000006 /* EngineTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000008 /* EngineTests.m */; };
+		A20000000000000000000007 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000010 /* WebKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +36,8 @@
 		A30000000000000000000007 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		A30000000000000000000008 /* EngineTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ISHProbeTests/EngineTests.m; sourceTree = SOURCE_ROOT; };
 		A30000000000000000000009 /* ISHProbeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ISHProbeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000010 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		A30000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ISHProbe/Info.plist; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +47,7 @@
 			files = (
 				A20000000000000000000004 /* libsqlite3.tbd in Frameworks */,
 				A20000000000000000000005 /* libresolv.tbd in Frameworks */,
+				A20000000000000000000007 /* WebKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -64,6 +68,7 @@
 				A30000000000000000000002 /* Engine.m */,
 				A30000000000000000000003 /* Engine.h */,
 				A30000000000000000000008 /* EngineTests.m */,
+				A30000000000000000000011 /* Info.plist */,
 				A30000000000000000000004 /* alpine-rootfs */,
 				A70000000000000000000002 /* Frameworks */,
 				A70000000000000000000003 /* Products */,
@@ -75,6 +80,7 @@
 			children = (
 				A30000000000000000000006 /* libsqlite3.tbd */,
 				A30000000000000000000007 /* libresolv.tbd */,
+				A30000000000000000000010 /* WebKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -254,12 +260,11 @@
 				CURRENT_PROJECT_VERSION = 1;
 				EXCLUDED_ARCHS = "";
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ISHProbe/Info.plist;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../deps/include",
 					"$(SRCROOT)/../deps/include/ish",
 				);
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				ISH_LIBS_DIR = "$(SRCROOT)/../deps/libs";
 				"ISH_LIBS_DIR[sdk=iphonesimulator*]" = "$(SRCROOT)/../deps/libs/iphonesimulator";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -288,12 +293,11 @@
 				CURRENT_PROJECT_VERSION = 1;
 				EXCLUDED_ARCHS = "";
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ISHProbe/Info.plist;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../deps/include",
 					"$(SRCROOT)/../deps/include/ish",
 				);
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				ISH_LIBS_DIR = "$(SRCROOT)/../deps/libs";
 				"ISH_LIBS_DIR[sdk=iphonesimulator*]" = "$(SRCROOT)/../deps/libs/iphonesimulator";
 				LD_RUNPATH_SEARCH_PATHS = (

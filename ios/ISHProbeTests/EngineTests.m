@@ -1,12 +1,18 @@
 #import <XCTest/XCTest.h>
 #import "Engine.h"
 
+// The DSH rootfs is prepared at build time (tools/prepare-dsh-rootfs.py), so
+// this test does not install anything inside the guest. It boots the kernel,
+// checks the preinstalled Node, starts `dsh web`, and finally fetches the
+// printed token URL over loopback. Guest sockets are mapped to host sockets by
+// iSH, so a plain NSURLSession request exercises the real HTTP server.
+
 @interface EngineTests : XCTestCase
 @end
 
 @implementation EngineTests
 
-- (void)testAlpineUnameAndNode {
+- (void)testDSHWebServesTheUI {
     NSString *source = [NSBundle.mainBundle pathForResource:@"alpine-rootfs" ofType:nil];
     XCTAssertNotNil(source);
     if (source == nil) {
@@ -29,49 +35,9 @@
         return;
     }
 
-    NSDictionary *result = [ISHEngine execute:@"/bin/uname" arguments:@[@"-a"]];
-    fprintf(stdout, "\nISH_PROBE_RESULT_BEGIN\n%s\nISH_PROBE_RESULT_END\n", result.description.UTF8String);
-    fflush(stdout);
-
-    XCTAssertNil(result[@"launchError"], @"launch failed: %@", result);
-    XCTAssertFalse([result[@"timedOut"] boolValue], @"guest process timed out: %@", result);
-    XCTAssertEqual([result[@"exitCode"] intValue], 0, @"guest exit was not zero: %@", result);
-    XCTAssertTrue([result[@"stdout"] containsString:@"Linux"], @"unexpected uname output: %@", result);
-    if (result[@"launchError"] != nil || [result[@"timedOut"] boolValue] || [result[@"exitCode"] intValue] != 0) {
-        return;
-    }
-
-    NSDictionary *configResult = [ISHEngine execute:@"/bin/cat"
-                                          arguments:@[@"/etc/resolv.conf", @"/etc/apk/repositories"]];
-    fprintf(stdout, "\nISH_PROBE_CONFIG_RESULT_BEGIN\n%s\nISH_PROBE_CONFIG_RESULT_END\n", configResult.description.UTF8String);
-    fflush(stdout);
-
-    NSDictionary *dnsResult = [ISHEngine execute:@"/usr/bin/nslookup"
-                                       arguments:@[@"dl-cdn.alpinelinux.org"]];
-    fprintf(stdout, "\nISH_PROBE_DNS_RESULT_BEGIN\n%s\nISH_PROBE_DNS_RESULT_END\n", dnsResult.description.UTF8String);
-    fflush(stdout);
-
-    NSDictionary *httpsResult = [ISHEngine execute:@"/usr/bin/wget"
-                                        arguments:@[@"-S", @"-O", @"/dev/null", @"https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64/APKINDEX.tar.gz"]];
-    fprintf(stdout, "\nISH_PROBE_HTTPS_RESULT_BEGIN\n%s\nISH_PROBE_HTTPS_RESULT_END\n", httpsResult.description.UTF8String);
-    fflush(stdout);
-
-    NSDictionary *installResult = [ISHEngine execute:@"/sbin/apk"
-                                           arguments:@[@"add", @"--no-cache", @"nodejs", @"npm"]];
-    fprintf(stdout, "\nISH_PROBE_APK_RESULT_BEGIN\n%s\nISH_PROBE_APK_RESULT_END\n", installResult.description.UTF8String);
-    fflush(stdout);
-
-    XCTAssertNil(installResult[@"launchError"], @"apk launch failed: %@", installResult);
-    XCTAssertFalse([installResult[@"timedOut"] boolValue], @"apk timed out: %@", installResult);
-    XCTAssertEqual([installResult[@"exitCode"] intValue], 0, @"apk install failed: %@", installResult);
-    if (installResult[@"launchError"] != nil || [installResult[@"timedOut"] boolValue] || [installResult[@"exitCode"] intValue] != 0) {
-        return;
-    }
-
     NSDictionary *nodeResult = [ISHEngine execute:@"/usr/bin/node" arguments:@[@"--version"]];
     fprintf(stdout, "\nISH_PROBE_NODE_RESULT_BEGIN\n%s\nISH_PROBE_NODE_RESULT_END\n", nodeResult.description.UTF8String);
     fflush(stdout);
-
     XCTAssertNil(nodeResult[@"launchError"], @"node launch failed: %@", nodeResult);
     XCTAssertFalse([nodeResult[@"timedOut"] boolValue], @"node timed out: %@", nodeResult);
     XCTAssertEqual([nodeResult[@"exitCode"] intValue], 0, @"node exit was not zero: %@", nodeResult);
@@ -80,63 +46,81 @@
         return;
     }
 
-    NSDictionary *npmVersionResult = [ISHEngine execute:@"/usr/bin/npm" arguments:@[@"--version"]];
-    fprintf(stdout, "\nISH_PROBE_NPM_VERSION_RESULT_BEGIN\n%s\nISH_PROBE_NPM_VERSION_RESULT_END\n", npmVersionResult.description.UTF8String);
+    NSMutableString *tail = [NSMutableString string];
+    NSLock *tailLock = [NSLock new];
+    dispatch_semaphore_t tokenReady = dispatch_semaphore_create(0);
+
+    BOOL started = [ISHEngine startProcess:@"/usr/local/bin/dsh"
+                                 arguments:@[@"web", @"--host", @"127.0.0.1", @"--port", @"8791", @"--no-open"]
+                               environment:@{
+        @"DSH_HOME": @"/root/.dsh",
+        @"UV_USE_IO_URING": @"0",
+        @"NARB_DISABLE_NATIVE_CACHE": @"1",
+        @"NODE_OPTIONS": @"--dns-result-order=ipv4first",
+    }
+                                    output:^(NSString *chunk, BOOL isStderr) {
+        fprintf(stdout, "%s", chunk.UTF8String);
+        fflush(stdout);
+        [tailLock lock];
+        [tail appendString:chunk];
+        [tailLock unlock];
+        if ([chunk containsString:@"token="]) {
+            dispatch_semaphore_signal(tokenReady);
+        }
+    }
+                                      exit:^(int exitCode) {
+        fprintf(stdout, "\nISH_PROBE_DSH_EXITED_%d\n", exitCode);
+        fflush(stdout);
+        dispatch_semaphore_signal(tokenReady);
+    }];
+    XCTAssertTrue(started, @"dsh web did not start");
+
+    long tokenWait = dispatch_semaphore_wait(tokenReady,
+                                             dispatch_time(DISPATCH_TIME_NOW, 900 * NSEC_PER_SEC));
+    [tailLock lock];
+    NSString *output = [tail copy];
+    [tailLock unlock];
+    fprintf(stdout, "\nISH_PROBE_DSH_OUTPUT_BEGIN\n%s\nISH_PROBE_DSH_OUTPUT_END\n", output.UTF8String);
+    fflush(stdout);
+    XCTAssertEqual(tokenWait, 0, @"dsh web did not print a token URL within 15 minutes");
+
+    NSRange marker = [output rangeOfString:@"http://127.0.0.1:"];
+    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output");
+    if (marker.location == NSNotFound) {
+        return;
+    }
+    NSString *urlText = [output substringFromIndex:marker.location];
+    NSRange newline = [urlText rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (newline.location != NSNotFound) {
+        urlText = [urlText substringToIndex:newline.location];
+    }
+    fprintf(stdout, "\nISH_PROBE_DSH_URL_%s\n", urlText.UTF8String);
     fflush(stdout);
 
-    XCTAssertNil(npmVersionResult[@"launchError"], @"npm --version launch failed: %@", npmVersionResult);
-    XCTAssertFalse([npmVersionResult[@"timedOut"] boolValue], @"npm --version timed out: %@", npmVersionResult);
-    XCTAssertEqual([npmVersionResult[@"exitCode"] intValue], 0, @"npm --version failed: %@", npmVersionResult);
-    if (npmVersionResult[@"launchError"] != nil || [npmVersionResult[@"timedOut"] boolValue] || [npmVersionResult[@"exitCode"] intValue] != 0) {
+    NSURL *url = [NSURL URLWithString:urlText];
+    XCTAssertNotNil(url, @"bad URL: %@", urlText);
+    if (url == nil) {
         return;
     }
 
-    NSDictionary *npmPingResult = [ISHEngine execute:@"/usr/bin/timeout"
-                                           arguments:@[@"60", @"/usr/bin/npm", @"ping", @"--loglevel=verbose"]];
-    fprintf(stdout, "\nISH_PROBE_NPM_PING_RESULT_BEGIN\n%s\nISH_PROBE_NPM_PING_RESULT_END\n", npmPingResult.description.UTF8String);
-    fflush(stdout);
+    XCTestExpectation *expectation = [self expectationWithDescription:@"DSH UI is served"];
+    __block NSInteger status = 0;
+    __block NSUInteger bodyLength = 0;
+    [[NSURLSession.sharedSession dataTaskWithURL:url
+                              completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        status = [(NSHTTPURLResponse *)response statusCode];
+        bodyLength = data.length;
+        if (error != nil) {
+            fprintf(stderr, "ISH_PROBE_HTTP_ERROR %s\n", error.description.UTF8String);
+        }
+        fprintf(stdout, "\nISH_PROBE_HTTP_STATUS_%ld_LENGTH_%lu\n", (long)status, (unsigned long)bodyLength);
+        fflush(stdout);
+        [expectation fulfill];
+    }] resume];
+    [self waitForExpectations:@[expectation] timeout:60];
 
-    XCTAssertNil(npmPingResult[@"launchError"], @"npm ping launch failed: %@", npmPingResult);
-    XCTAssertFalse([npmPingResult[@"timedOut"] boolValue], @"npm ping timed out: %@", npmPingResult);
-    XCTAssertEqual([npmPingResult[@"exitCode"] intValue], 0, @"npm ping failed: %@", npmPingResult);
-    if (npmPingResult[@"launchError"] != nil || [npmPingResult[@"timedOut"] boolValue] || [npmPingResult[@"exitCode"] intValue] != 0) {
-        return;
-    }
-
-    NSDictionary *npmResult = [ISHEngine execute:@"/usr/bin/timeout"
-                                       arguments:@[
-                                           @"600",
-                                           @"/usr/bin/npm",
-                                           @"install",
-                                           @"--global",
-                                           @"--ignore-scripts",
-                                           @"--no-audit",
-                                           @"--no-fund",
-                                           @"--loglevel=verbose",
-                                           @"@deepseek-ai/dsh@0.2.2-rc.1",
-                                           @"debug@4.4.3",
-                                           @"ms@2.1.3",
-                                           @"zod@4.4.3"
-                                       ]];
-    fprintf(stdout, "\nISH_PROBE_NPM_RESULT_BEGIN\n%s\nISH_PROBE_NPM_RESULT_END\n", npmResult.description.UTF8String);
-    fflush(stdout);
-
-    XCTAssertNil(npmResult[@"launchError"], @"npm launch failed: %@", npmResult);
-    XCTAssertFalse([npmResult[@"timedOut"] boolValue], @"npm timed out: %@", npmResult);
-    XCTAssertEqual([npmResult[@"exitCode"] intValue], 0, @"npm install failed: %@", npmResult);
-    if (npmResult[@"launchError"] != nil || [npmResult[@"timedOut"] boolValue] || [npmResult[@"exitCode"] intValue] != 0) {
-        return;
-    }
-
-    NSDictionary *dshResult = [ISHEngine execute:@"/usr/local/bin/dsh" arguments:@[@"--version"]];
-    fprintf(stdout, "\nISH_PROBE_DSH_RESULT_BEGIN\n%s\nISH_PROBE_DSH_RESULT_END\n", dshResult.description.UTF8String);
-    fflush(stdout);
-
-    XCTAssertNil(dshResult[@"launchError"], @"dsh launch failed: %@", dshResult);
-    XCTAssertFalse([dshResult[@"timedOut"] boolValue], @"dsh timed out: %@", dshResult);
-    XCTAssertEqual([dshResult[@"exitCode"] intValue], 0, @"dsh exit was not zero: %@", dshResult);
-    NSString *versionOutput = [dshResult[@"stdout"] stringByAppendingString:dshResult[@"stderr"]];
-    XCTAssertTrue([versionOutput containsString:@"0.2.2-rc.1"], @"unexpected dsh version: %@", dshResult);
+    XCTAssertEqual(status, 200, @"DSH web did not serve the UI");
+    XCTAssertGreaterThan(bodyLength, 100, @"DSH web returned an empty page");
 }
 
 @end
