@@ -51,6 +51,18 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee "$RUNNER_TEMP/ish-boot-xcodebuild.log"
 
+      - name: Show guest syscall tail
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/ish-boot-xcodebuild.log"
+          [ -f "$log" ] || exit 0
+          echo "===== ISH_PROBE markers ====="
+          grep -a "ISH_PROBE_" "$log" | tail -40 || true
+          echo "===== last guest syscalls ====="
+          grep -a "\[sc\]" "$log" | tail -150 || true
+          echo "===== raw tail ====="
+          tail -c 20000 "$log" || true
+
       - name: Dump guest crash diagnostics
         if: always()
         run: |
