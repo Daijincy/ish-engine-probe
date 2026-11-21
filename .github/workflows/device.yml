@@ -1,0 +1,126 @@
+name: iSH device IPA
+
+# Builds the same handler-free probe app for a real iPhone (arm64, iphoneos)
+# and packages an unsigned .ipa. The .ipa is meant to be re-signed with the
+# user's own certificate by Sideloadly/AltStore/Xcode; CI has no signing
+# identity. Every platform claim is verified with vtool, because a macOS or
+# simulator slice in deps/libs would still link and only fail on the phone.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: brew install meson ninja llvm libarchive lld
+
+      - name: Fetch OpenMinis and ish-arm64
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/OpenMinis/OpenMinis.git
+          cd OpenMinis && git submodule status
+
+      - name: Bound the guest uname hostname copy
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("OpenMinis/deps/ish/kernel/uname.c")
+          source = path.read_text()
+          old = "    strcpy(uts->hostname, hostname);"
+          new = '    snprintf(uts->hostname, sizeof(uts->hostname), "%s", hostname);'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, new))
+          PY
+          git -C OpenMinis/deps/ish diff --check
+
+      - name: Build iSH device libraries
+        run: |
+          mkdir -p "$RUNNER_TEMP/lld-bin"
+          LLD_BIN="$(brew --prefix lld)/bin"
+          for tool in ld.lld lld ld64.lld; do
+            [ -e "$LLD_BIN/$tool" ] && ln -sf "$LLD_BIN/$tool" "$RUNNER_TEMP/lld-bin/$tool"
+          done
+          export PATH="$RUNNER_TEMP/lld-bin:$PATH"
+          command -v ld.lld && ld.lld --version
+          cd OpenMinis && ./deps/build_ish.sh release
+
+      - name: Verify the libraries target iOS devices
+        run: |
+          echo "iphoneos SDK: $(xcrun --sdk iphoneos --show-sdk-path)"
+          for lib in libish.a libish_emu.a libfakefs.a libish_aot.a; do
+            echo "--- deps/libs/$lib ---"
+            vtool -show-build "OpenMinis/deps/libs/$lib" | tee "$RUNNER_TEMP/vtool-$lib.txt"
+            grep -q "platform IOS" "$RUNNER_TEMP/vtool-$lib.txt" || {
+              echo "::error::$lib is not built for the iOS device platform"; exit 1; }
+          done
+
+      - name: Prepare Alpine rootfs
+        run: cd OpenMinis && ./deps/prepare_alpine_rootfs.sh 3.23
+
+      - name: Link the probe app against the device libraries
+        run: |
+          set -o pipefail
+          rm -rf deps
+          ln -s OpenMinis/deps deps
+          xcodebuild -project ios/ISHProbe.xcodeproj \
+            -target ISHProbe \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            STRIP_INSTALLED_PRODUCT=NO COPY_PHASE_STRIP=NO DEPLOYMENT_POSTPROCESSING=NO \
+            build | tee "$RUNNER_TEMP/device-xcodebuild.log"
+
+      - name: Verify the app runs the engine on a device
+        run: |
+          APP="$RUNNER_TEMP/derived/Build/Products/Release-iphoneos/ISHProbe.app"
+          test -d "$APP" || { echo "::error::app was not produced"; exit 1; }
+          echo "--- app binary platform ---"
+          vtool -show-build "$APP/ISHProbe" | tee "$RUNNER_TEMP/vtool-app.txt"
+          grep -q "platform IOS" "$RUNNER_TEMP/vtool-app.txt" || {
+            echo "::error::app binary is not an iOS device build"; exit 1; }
+          echo "--- engine symbols ---"
+          for symbol in _do_execve _mount_root _jit_control; do
+            nm "$APP/ISHProbe" | grep -q " $symbol\$" || {
+              echo "::error::engine symbol $symbol is missing from the app"; exit 1; }
+            echo "ok: $symbol"
+          done
+          echo "--- bundled rootfs ---"
+          test -f "$APP/alpine-rootfs/data/bin/busybox" || {
+            echo "::error::alpine rootfs is not in the app bundle"; exit 1; }
+          du -sh "$APP/alpine-rootfs"
+          echo "--- linked frameworks ---"
+          otool -L "$APP/ISHProbe"
+
+      - name: Package the unsigned IPA
+        run: |
+          APP="$RUNNER_TEMP/derived/Build/Products/Release-iphoneos/ISHProbe.app"
+          mkdir -p "$RUNNER_TEMP/pkg/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/pkg/Payload/"
+          cd "$RUNNER_TEMP/pkg"
+          zip -qry "$RUNNER_TEMP/ISHProbe-unsigned.ipa" Payload
+          ls -lh "$RUNNER_TEMP/ISHProbe-unsigned.ipa"
+          unzip -l "$RUNNER_TEMP/ISHProbe-unsigned.ipa" | head -20
+
+      - name: Upload the unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ISHProbe-unsigned-ipa
+          path: ${{ runner.temp }}/ISHProbe-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Publish the unsigned IPA
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: probe-latest
+          name: iSH iOS libraries + Alpine rootfs
+          files: ${{ runner.temp }}/ISHProbe-unsigned.ipa
+          prerelease: true
