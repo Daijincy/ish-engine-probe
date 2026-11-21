@@ -56,7 +56,14 @@ jobs:
           echo "iphoneos SDK: $(xcrun --sdk iphoneos --show-sdk-path)"
           for lib in libish.a libish_emu.a libfakefs.a libish_aot.a; do
             echo "--- deps/libs/$lib ---"
-            vtool -show-build "OpenMinis/deps/libs/$lib" | tee "$RUNNER_TEMP/vtool-$lib.txt"
+            # vtool only accepts a Mach-O file, so verify one member object.
+            rm -rf "$RUNNER_TEMP/vt" && mkdir -p "$RUNNER_TEMP/vt"
+            (cd "$RUNNER_TEMP/vt" && ar x "$GITHUB_WORKSPACE/OpenMinis/deps/libs/$lib")
+            ls "$RUNNER_TEMP/vt"/*.o >/dev/null 2>&1 || {
+              echo "::warning::$lib has no object members to inspect"; continue; }
+            member="$(ls "$RUNNER_TEMP/vt"/*.o | head -1)"
+            lipo -info "$member"
+            vtool -show-build "$member" | tee "$RUNNER_TEMP/vtool-$lib.txt"
             grep -q "platform IOS" "$RUNNER_TEMP/vtool-$lib.txt" || {
               echo "::error::$lib is not built for the iOS device platform"; exit 1; }
           done
