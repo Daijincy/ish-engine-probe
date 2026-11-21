@@ -164,11 +164,8 @@ static double processCPUSeconds(void) {
     NSLock *tailLock = [NSLock new];
     dispatch_semaphore_t tokenReady = dispatch_semaphore_create(0);
 
-    // The kernel injects --max-old-space-size=512 for binaries named node.
-    // V8 lets the last occurrence win, so appending our own flag through the
-    // shell lowers the ceiling below the guest's 512MB anonymous-page cap.
-    BOOL started = [ISHEngine startProcess:@"/bin/sh"
-                                 arguments:@[@"-c", @"exec /usr/bin/node --max-old-space-size=256 /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 8791 --no-open"]
+    BOOL started = [ISHEngine startProcess:@"/usr/local/bin/dsh"
+                                 arguments:@[@"web", @"--host", @"127.0.0.1", @"--port", @"8791", @"--no-open"]
                                environment:@{
         @"DSH_HOME": @"/root/.dsh",
         @"UV_USE_IO_URING": @"0",
@@ -201,7 +198,7 @@ static double processCPUSeconds(void) {
     NSString *dshHome = [destination stringByAppendingPathComponent:@"data/root/.dsh"];
     // Under the gadget interpreter every JS bytecode runs several times slower
     // than on real ARM64, so give dsh's module graph plenty of room.
-    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:360];
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:900];
     long waitResult = 1;
     while ([deadline timeIntervalSinceNow] > 0) {
         NSTimeInterval slice = MIN(60, [deadline timeIntervalSinceNow]);

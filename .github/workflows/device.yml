@@ -33,6 +33,24 @@ jobs:
             https://github.com/OpenMinis/OpenMinis.git
           cd OpenMinis && git submodule status
 
+      - name: Raise the guest anonymous-memory ceiling
+        run: |
+          # dsh's V8 runtime commits its heap and worklist segments eagerly, so
+          # the stock 512MB ceiling killed it with
+          # "Fatal process out of memory: Worklist::Segment::Create" before the
+          # web server ever bound. 2GB guest is the ceiling, not the limit: the
+          # host-derived limit below still keeps the app under jetsam.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("OpenMinis/deps/ish/kernel/mm.h")
+          source = path.read_text()
+          old = "#define ANON_MMAP_LIMIT_PAGES 131072"
+          new = "#define ANON_MMAP_LIMIT_PAGES 262144"
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, new))
+          PY
+          git -C OpenMinis/deps/ish diff --check
+
       - name: Bound the guest uname hostname copy
         run: |
           python3 - <<'PY'

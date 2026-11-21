@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <os/proc.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 
 #include "ish/kernel/init.h"
+#include "ish/kernel/mm.h"
 #include "ish/kernel/task.h"
 #include "ish/kernel/resource.h"
 #include "ish/kernel/calls.h"
@@ -213,6 +215,18 @@ static NSData *build_environment(NSDictionary<NSString *, NSString *> *overrides
 static int boot_locked(NSString *rootPath) {
     if (gBooted) {
         return 0;
+    }
+
+    // ANON_MMAP_LIMIT_PAGES is only a ceiling. The kernel counts committed
+    // anonymous pages in host-page units (16KB on iOS), so derive the real
+    // budget from what the OS says we may use: a fixed 2GB ceiling would be
+    // jetsam on an older iPhone, while 512MB is too little for dsh's V8 heap
+    // and worklists.
+    long available = (long)os_proc_available_memory();
+    if (available > 0) {
+        ish_set_anon_page_limit((long)(available * 0.7 / getpagesize()));
+        NSLog(@"ISH_ENGINE anon limit = %ld pages (available %ld MB)",
+              (long)atomic_load(&anon_page_limit), available / (1024 * 1024));
     }
 
     NSString *dataPath = [rootPath stringByAppendingPathComponent:@"data"];
