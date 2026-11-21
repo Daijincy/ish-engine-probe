@@ -258,7 +258,12 @@ static int boot_locked(NSString *rootPath) {
     struct fd *jitfd = generic_open("/proc/ish/jit", O_RDONLY_, 0);
     if (!IS_ERR(jitfd)) {
         char jitbuf[2048];
-        ssize_t jitlen = jitfd->ops->read(jitfd, jitbuf, sizeof(jitbuf) - 1);
+        // procfs only provides pread; calling a NULL ops->read jumps to 0.
+        ssize_t jitlen = -1;
+        if (jitfd->ops->read)
+            jitlen = jitfd->ops->read(jitfd, jitbuf, sizeof(jitbuf) - 1);
+        else if (jitfd->ops->pread)
+            jitlen = jitfd->ops->pread(jitfd, jitbuf, sizeof(jitbuf) - 1, 0);
         fd_close(jitfd);
         if (jitlen > 0) {
             jitbuf[jitlen] = '\0';
