@@ -11,7 +11,7 @@ static NSString *const DSHRootfsFolder = @"dsh-rootfs";
 static NSString *const DSHRootfsMarker = @".dsh-rootfs-ready";
 static NSString *const DSHListenPort = @"8787";
 
-@interface DSHViewController : UIViewController <WKWebViewNavigationDelegate>
+@interface DSHViewController : UIViewController <WKNavigationDelegate>
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) UIVisualEffectView *statusPanel;
 @property(nonatomic, strong) UILabel *titleLabel;

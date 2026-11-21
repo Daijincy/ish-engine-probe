@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#include <stdio.h>
 #import "Engine.h"
 
 // The DSH rootfs is prepared at build time (tools/prepare-dsh-rootfs.py), so

@@ -35,8 +35,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LOCK_PATH = os.path.join(HERE, "alpine-rootfs-lock.json")
 SOURCE_DATE_EPOCH = 1767225600  # 2026-01-01T00:00:00Z
 MIRRORS = [
-    "https://mirrors.tuna.tsinghua.edu.cn/alpine",
     "https://dl-cdn.alpinelinux.org/alpine",
+    "https://mirrors.tuna.tsinghua.edu.cn/alpine",
 ]
 
 
