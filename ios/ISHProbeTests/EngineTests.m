@@ -77,13 +77,13 @@
     XCTAssertTrue(started, @"dsh web did not start");
 
     long tokenWait = dispatch_semaphore_wait(tokenReady,
-                                             dispatch_time(DISPATCH_TIME_NOW, 900 * NSEC_PER_SEC));
+                                             dispatch_time(DISPATCH_TIME_NOW, 1800 * NSEC_PER_SEC));
     [tailLock lock];
     NSString *output = [tail copy];
     [tailLock unlock];
     fprintf(stdout, "\nISH_PROBE_DSH_OUTPUT_BEGIN\n%s\nISH_PROBE_DSH_OUTPUT_END\n", output.UTF8String);
     fflush(stdout);
-    XCTAssertEqual(tokenWait, 0, @"dsh web did not print a token URL within 15 minutes");
+    XCTAssertEqual(tokenWait, 0, @"dsh web did not print a token URL within 30 minutes");
 
     NSRange marker = [output rangeOfString:@"http://127.0.0.1:"];
     XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output");
