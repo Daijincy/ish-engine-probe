@@ -1,5 +1,6 @@
 #import <XCTest/XCTest.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/resource.h>
 #import "Engine.h"
 
@@ -63,6 +64,10 @@ static double processCPUSeconds(void) {
     if (!copied) {
         return;
     }
+
+    // iSH's env-gated syscall trace. If the guest stalls, the tail of the
+    // trace shows the syscall it is blocked in; if it progresses, we see it.
+    setenv("ISH_SYSTRACE", "1", 1);
 
     NSDate *testStart = [NSDate date];
     int bootResult = [ISHEngine bootWithRootPath:destination];
@@ -149,7 +154,7 @@ static double processCPUSeconds(void) {
     // DSH prints nothing until the web server is up, so read its progress from
     // the guest filesystem, which fakefs keeps as plain host files.
     NSString *dshHome = [destination stringByAppendingPathComponent:@"data/root/.dsh"];
-    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:900];
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:420];
     long waitResult = 1;
     while ([deadline timeIntervalSinceNow] > 0) {
         NSTimeInterval slice = MIN(60, [deadline timeIntervalSinceNow]);
@@ -180,7 +185,7 @@ static double processCPUSeconds(void) {
     fflush(stdout);
 
     NSRange marker = [output rangeOfString:@"http://127.0.0.1:"];
-    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output after 15 minutes");
+    XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output after 7 minutes");
     if (marker.location == NSNotFound) {
         return;
     }
