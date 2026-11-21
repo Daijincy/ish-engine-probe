@@ -9,7 +9,9 @@
 // the V8 runtime work under the gadget interpreter, then starts `dsh web` and
 // fetches the printed token URL over loopback.
 
-static NSString *const DSHNodeOptions = @"--dns-result-order=ipv4first";
+// --trace-exit prints who called process.exit; dsh web exits 0 silently inside
+// iSH while the same tree stays up natively, so the caller is what we need.
+static NSString *const DSHNodeOptions = @"--dns-result-order=ipv4first --trace-exit --trace-uncaught";
 
 static double processCPUSeconds(void) {
     struct rusage usage;
