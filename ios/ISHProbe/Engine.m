@@ -159,6 +159,14 @@ static void pipe_reader(int fd, BOOL isStderr, NSMutableData *accumulator,
                         NSString *chunk = [[NSString alloc] initWithBytes:buffer
                                                                    length:(NSUInteger)count
                                                                  encoding:NSUTF8StringEncoding];
+                        if (chunk == nil) {
+                            // Guest stderr is not always valid UTF-8 (V8 prints
+                            // raw bytes); keep the bytes visible instead of
+                            // dropping the only diagnostic we get.
+                            chunk = [[NSString alloc] initWithBytes:buffer
+                                                             length:(NSUInteger)count
+                                                           encoding:NSISOLatin1StringEncoding];
+                        }
                         if (chunk != nil) {
                             output(chunk, isStderr);
                         }

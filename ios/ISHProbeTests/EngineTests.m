@@ -1,8 +1,13 @@
 #import <XCTest/XCTest.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/resource.h>
 #import "Engine.h"
+
+// Exported by the iSH kernel's anonymous-memory ledger (kernel/mmap.c).
+extern _Atomic long anon_page_count;
+extern _Atomic long anon_page_limit;
 
 // The DSH rootfs is prepared at build time (tools/prepare-dsh-rootfs.py). This
 // test boots the kernel, checks the preinstalled Node, probes which parts of
@@ -67,9 +72,9 @@ static double processCPUSeconds(void) {
         return;
     }
 
-    // Temporary: dsh stalls somewhere after ~45s of CPU. The workflow keeps
-    // only the tail of this trace, so the last syscalls survive the log cap.
-    setenv("ISH_SYSTRACE", "1", 1);
+    // DSH stalled right after small mmaps started returning ENOMEM, so the
+    // guest memory ledger is what this run has to report; systrace noise is off.
+    // setenv("ISH_SYSTRACE", "1", 1);
 
     NSDate *testStart = [NSDate date];
     int bootResult = [ISHEngine bootWithRootPath:destination];
@@ -186,9 +191,15 @@ static double processCPUSeconds(void) {
             }
         }
         NSString *progress = seen.count ? [seen componentsJoinedByString:@","] : @"none";
-        fprintf(stdout, "\nISH_PROBE_PROGRESS_%lds_CPU_%.1fs_%s\n",
+        // Guest committed pages vs. the kernel's cap: iSH charges each
+        // committed 4KB guest page as a whole 16KB host page, so hitting the
+        // cap shows up as tiny mmaps failing with ENOMEM.
+        fprintf(stdout, "\nISH_PROBE_PROGRESS_%lds_CPU_%.1fs_ANON_%ld_OF_%ld_%s\n",
                 (long)(-testStart.timeIntervalSinceNow),
-                processCPUSeconds() - cpuBefore, progress.UTF8String);
+                processCPUSeconds() - cpuBefore,
+                (long)atomic_load(&anon_page_count),
+                (long)atomic_load(&anon_page_limit),
+                progress.UTF8String);
         fflush(stdout);
     }
 
