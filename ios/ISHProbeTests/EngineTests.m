@@ -121,6 +121,14 @@ static double processCPUSeconds(void) {
         return;
     }
 
+    // The launcher itself must print commander's help; if this is empty the
+    // wrapper script or the JS entry point never ran at all.
+    NSDictionary *helpResult = [ISHEngine execute:@"/usr/local/bin/dsh"
+                                          arguments:@[@"--help"]
+                                        environment:@{@"DSH_HOME": @"/root/.dsh"}
+                                            timeout:120];
+    [self printResult:@"DSH_HELP" result:helpResult];
+
     NSMutableString *tail = [NSMutableString string];
     NSLock *tailLock = [NSLock new];
     dispatch_semaphore_t tokenReady = dispatch_semaphore_create(0);
@@ -190,6 +198,26 @@ static double processCPUSeconds(void) {
     fflush(stdout);
 
     NSRange marker = [output rangeOfString:@"http://127.0.0.1:"];
+    if (marker.location == NSNotFound) {
+        // dsh booted, then exited quietly. Dump what it left in the guest home
+        // (startup diagnostics land in ~/.dsh/logs) so the failure is visible.
+        NSMutableArray<NSString *> *entries = [NSMutableArray array];
+        for (NSString *entry in [files enumeratorAtPath:dshHome]) {
+            if (entries.count >= 40) {
+                break;
+            }
+            [entries addObject:entry];
+        }
+        fprintf(stdout, "\nISH_PROBE_DSH_HOME_BEGIN\n%s\nISH_PROBE_DSH_HOME_END\n",
+                [entries componentsJoinedByString:@"\n"].UTF8String);
+        NSString *logsDir = [dshHome stringByAppendingPathComponent:@"logs"];
+        for (NSString *log in [files contentsOfDirectoryAtPath:logsDir error:nil]) {
+            NSData *logData = [NSData dataWithContentsOfFile:[logsDir stringByAppendingPathComponent:log]];
+            fprintf(stdout, "\nISH_PROBE_DSH_LOG_BEGIN_%s\n%.*s\nISH_PROBE_DSH_LOG_END\n",
+                    log.UTF8String, (int)MIN(logData.length, (NSUInteger)8000), (const char *)logData.bytes);
+        }
+        fflush(stdout);
+    }
     XCTAssertNotEqual(marker.location, NSNotFound, @"no web URL in dsh output after 25 minutes");
     if (marker.location == NSNotFound) {
         return;
