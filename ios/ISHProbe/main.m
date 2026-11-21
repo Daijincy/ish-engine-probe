@@ -52,7 +52,12 @@ static BOOL gRootfsCopied = NO;
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    if (_log.length == 0) {
+    // XCTest launches this app as its test host. Booting the guest here would
+    // race the test's own kernel (two threads driving pid 1), which crashed
+    // the run, so only auto-start outside the test host.
+    BOOL underXCTest = NSProcessInfo.processInfo.environment[@"XCTestConfigurationFilePath"] != nil ||
+                       NSClassFromString(@"XCTestCase") != nil;
+    if (_log.length == 0 && !underXCTest) {
         [self runTapped];
     }
 }
